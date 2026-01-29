@@ -1,0 +1,45 @@
+author: Faizan Khan (xdy6sg)  # <-------  Students: add your name and uva id here
+
+
+
+# Leave everything below as is
+project: 
+  type: default
+
+course: "DS 6030"
+semester: "Spring 2026"
+format:
+  html:
+    date: last-modified
+    toc: true
+    toc-depth: 2
+    fontsize: 14px
+    theme: yeti
+    css: hw-style.css   
+    callout-icon: false
+    embed-resources: true
+    include-before-body:  
+      - text: |
+          <p style="color:#E57200;text-align:center;font-weight:bold;background-color:#232D4B;padding:.25rem;margin:0;">
+          DS 6030 | Spring 2026 | University of Virginia 
+          </p>
+    pandoc-args:
+      - "--strip-comments"
+    code-copy: true  
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  error: true
+  #freeze: auto
+
+knitr:
+  opts_chunk:
+    out.width: "70%"
+    fig.align: "center"
+    R.options:
+      width: 80
+      digits: 3
+      dplyr.print_min: 6
+      dplyr.print_max: 6

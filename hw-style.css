@@ -1,0 +1,68 @@
+/* Homework Style */
+
+/* Indent Solution Block */
+.callout-note {
+  margin-left: 1rem;
+}
+
+.callout-tip {
+  margin-left: 1rem;
+}
+
+
+/* Homework Title */
+h1.title {
+   font-size: 1.6em;
+   border-bottom: none;
+   padding-bottom: none;
+}
+
+/* h1 is main question */
+h1 {
+   font-size: 1.4em;
+   font-weight: bold;
+   border-bottom: 1px solid #C0C0C0;
+   padding-bottom: none;
+}
+
+/* h2 is subsection */
+h2 {
+   font-size:1.0em;
+   padding-left:1.5em;
+   text-indent:-1.2em;
+   font-weight: normal;
+}
+
+h3 {
+   font-size:1.0em;
+}
+
+h4 {
+   font-size:0.9em;
+}
+
+h5 {
+   font-size:0.8em;
+}
+
+h6 {
+   font-size:0.7em;
+}
+
+
+/* Adjust horizontal spacing */
+
+p {
+  padding-left: 1.5em;
+}
+
+li p {
+  padding-left: 0;
+}
+
+pre {
+  margin-left: 1.5em;
+  margin-right: 1.5em;
+}
+
+

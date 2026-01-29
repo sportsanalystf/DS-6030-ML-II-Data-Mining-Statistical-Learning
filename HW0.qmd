@@ -1,0 +1,543 @@
+---
+title: "Homework #0: Hello DS-6030"
+---
+
+# Getting Help
+
+The purpose of this (ungraded) homework is to help get you prepared for the semester. Don't panic if you don't immediately know the answers to some of these. I expect everyone will need to look things up. Take note of the areas that are rusty and plan to spend a bit of extra time to get up to speed. If some of these items are not even remotely familiar to you, then you probably have not satisfied the pre-requisite material; review the course syllabus and speak to me about any questions.
+
+The teaching staff (TA and myself) are here to help! Don't wait too long before asking for help and do let us know right away if you are starting to fall behind. I will also publish the solutions after due date. It is **highly encouraged** that you study the posted solutions.
+
+# Course Tools
+
+## a. Working with Quarto
+
+
+1. Install or update quarto <https://quarto.org/docs/get-started/> to version 1.8.26 (or greater).
+    - If you are using VSCode, install the [Quarto extension](https://marketplace.visualstudio.com/items?itemName=quarto.quarto>).
+
+2. Course Homework Style
+
+In order to help with grading, you need to use special formatting to generate the homework html file. 
+
+Download the following files and put them in the top level of where you will keep your homework. 
+
+- [_quarto.yml](https://mdporter.github.io/DS6030/homework/_quarto.yml)
+- [hw-style.css](https://mdporter.github.io/DS6030/homework/hw-style.css)
+
+
+An example directory structure is:
+```
+hw/
+├─ _quarto.yml
+├─ hw-style.css
+├─ hw0.qmd
+├─ hw0.html
+├─ hw1.qmd
+├─ hw1.html
+...
+```
+
+
+## b. Update IDE
+
+Update your IDE and (optionally) try a new one! These will all work great for this course. 
+
+- [Positron](https://positron.posit.co/) (2026.01.0-147)
+
+- [RStudio](https://posit.co/download/rstudio-desktop/) (2026.01.0+392) 
+
+- [VSCode](https://code.visualstudio.com/) (1.108)
+    - If using VSCode, install the [Quarto extension](https://marketplace.visualstudio.com/items?itemName=quarto.quarto>)
+
+
+## c. Update R 
+
+- Use the latest version (R 4.5.2, Quarto 1.8.26).
+    - Installation help R: <https://cran.rstudio.com/>
+    
+- Install/Update the following packages we will meet during this course:
+  - Using R and Python: `reticulate`
+  - Dynamic report generation: `rmarkdown`, `knitr`, `quarto`
+  - Utility: `remotes`
+  - Working with Data: `tidyverse`
+  - Data: `ISLR`, `moderndive`, `MASS`
+  - Resampling: `boot`, `rsample`
+  - Modeling: `tidymodels`
+  - Regression: `glmnet`, `FNN`,
+  - Classification: `e1071`,
+  - Trees: `rpart`, `rpart.plot`, `randomForest`, `ranger`
+  - Ensembles: `xgboost`, `lightgbm`, `bonsai`
+  <!-- - Density Estimation: `fitdistrplus`, `ks` -->
+  <!-- - Clustering: `mclust`, `mixtools`, `dbscan` -->
+  <!-- - Association Analysis: `arules` -->
+  <!-- - Networks: `igraph` -->
+  - Forecasting: `fpp3`
+
+To install/update an R package, open an R console and run 
+```{r}
+#| echo: true
+#| eval: false
+# Example set of packages (most important for now)
+install.packages("reticulate")  
+install.packages("rmarkdown")  
+install.packages("knitr")  
+install.packages("quarto")  
+install.packages("tidymodels")  
+install.packages("tidyverse")  
+# ... add any more you want. You can always add more anytime.
+```
+
+You can see which of your existing packages need updating by running:
+```{r, echo=TRUE, eval=FALSE}
+old.packages() %>% as_tibble()
+```
+Or use the `update.packages()` function to update them. 
+
+Note: Do not call `install.packages()` in this Quarto document; it only needs to be done once from the console. However you will need to use `library()` in Quarto since it needs to be called every time the document is compiled.
+
+Below are some resources for help with modern R.
+
+::: {.callout-tip collapse="true" title = "R Resources"}
+
+### Tidyverse Resources
+
+Read the following sections in [R for Data Science 2e](https://r4ds.hadley.nz/):
+
+- The Whole Game
+    - Chapters 2-9
+
+- Visualize
+    - Chapters 10-12
+
+- Transform
+    - 12-15, 19
+
+- Program
+    - 26-27
+
+- Communicate
+    - 29
+
+
+### Cheatsheets and resources
+
+[Posit Cheatsheets](https://posit.co/resources/cheatsheets/)
+
+### **RStudio and Quarto**
+
+- [RStudio IDE Cheatsheet](https://rstudio.github.io/cheatsheets/html/rstudio-ide.html)
+
+- [Quarto Website](https://quarto.org/docs/authoring/markdown-basics.html)
+
+- [Quarto Cheatsheet](https://rstudio.github.io/cheatsheets/html/quarto.html)
+
+- [Latex Cheatsheet](https://wch.github.io/latexsheet/latexsheet-0.png)
+
+### **R**
+
+- [Base R](https://rstudio.github.io/cheatsheets/base-r.pdf)
+
+- [Data Visualization Cheatsheet](https://rstudio.github.io/cheatsheets/html/data-visualization.html)
+    - [`ggplot2` website](https://ggplot2.tidyverse.org/)
+
+- [Tidy Data Cheatsheet](https://rstudio.github.io/cheatsheets/html/tidyr.html)
+    - [`tidyr` website](https://tidyr.tidyverse.org/)
+    
+- [Data Transform Cheatsheet](https://rstudio.github.io/cheatsheets/html/data-transformation.html)
+    - [`dplyr` website](https://dplyr.tidyverse.org/)    
+
+- [Factors with forcats Cheatsheet](https://rstudio.github.io/cheatsheets/html/factors.html)
+    - [`forcats` website](https://forcats.tidyverse.org/)
+
+- [Data Import Cheatsheet](https://rstudio.github.io/cheatsheets/html/data-import.html)
+    - [`readr` website](https://readr.tidyverse.org/)
+
+- [Apply Functions Cheatsheet](https://rstudio.github.io/cheatsheets/html/purrr.html)
+    - [`purrr` website](https://purrr.tidyverse.org/)
+
+### **Python with RStudio/RMarkdown** (Optional)
+
+- [Python with R and Reticulate Cheatsheet](https://rstudio.github.io/cheatsheets/html/reticulate.html)
+
+:::
+
+
+## d. Python Package Manager 
+
+I recommend [uv](https://docs.astral.sh/uv/) for python package management. 
+
+- To get you started, add the following `pyproject.toml` file to your top-level class directory (e.g., `DS6030/`):
+
+```toml {filename="pyproject.toml"}
+[project]
+name = "DS6030"
+version = "0.1.0"
+requires-python = ">=3.14"
+
+dependencies = [
+  # numerical computing
+  "numpy",
+  "scipy",
+
+  # data manipulation
+  "pandas",
+  "polars",
+  "ibis-framework",
+
+  # machine learning
+  "scikit-learn",
+  "statsmodels",
+
+  # plotting and visualization
+  "matplotlib",
+  "seaborn",
+  "plotnine",
+
+  # notebooks and execution
+  "jupyterlab",
+  "ipykernel"
+]
+```
+
+- Then run the following to add the python and packages from the pyproject.toml:
+
+```
+uv sync
+```
+
+
+
+# Problem 1: Math Notation
+
+## a. Least Squares
+
+What are the equations for the least squares coefficients in linear regression (in matrix notation)? Use $X$ for the model/design/predictor matrix, and $Y$ the vector of outcomes.
+
+::: {.callout-note title="Solution"}
+The least squares coefficients in matrix notation are:
+
+$$\hat{\beta} = (X^T X)^{-1} X^T Y$$
+
+Where:
+
+- $X$ is the $n \times p$ design/predictor matrix (with $n$ observations and $p$ predictors)
+- $Y$ is the $n \times 1$ vector of outcomes
+- $X^T$ is the transpose of $X$
+- $(X^T X)^{-1}$ is the inverse of the matrix $X^T X$
+
+This is derived by minimizing the sum of squared residuals $||Y - X\beta||^2$ with respect to $\beta$, taking the derivative, setting it equal to zero, and solving for $\beta$.
+
+**Derivation:**
+
+1. We want to minimize the residual sum of squares: $RSS = (Y - X\beta)^T(Y - X\beta)$
+
+2. Take the derivative with respect to $\beta$: 
+$$\frac{\partial RSS}{\partial \beta} = -2X^T Y + 2X^T X \beta$$
+
+3. Set equal to zero: 
+$$X^T X \beta = X^T Y$$
+
+4. Solve for $\beta$: 
+$$\hat{\beta} = (X^T X)^{-1} X^T Y$$
+
+:::
+
+## b. MLE
+
+Let $x_1, x_2, \ldots, x_n$ be a sample of length of time that a customer is on the phone with a call center help line. We feel comfortable modeling the data as coming from an *exponential distribution*. What is the MLE (Maximum Likelihood Estimate) of the parameter? Show your steps.
+
+::: {.callout-note title="Solution"}
+The exponential distribution has PDF: $f(x; \lambda) = \lambda e^{-\lambda x}$ for $x \geq 0$, where $\lambda > 0$ is the rate parameter.
+
+**Step 1: Write the likelihood function**
+
+$$L(\lambda) = \prod_{i=1}^{n} f(x_i; \lambda) = \prod_{i=1}^{n} \lambda e^{-\lambda x_i} = \lambda^n e^{-\lambda \sum_{i=1}^{n} x_i}$$
+
+**Step 2: Take the log-likelihood**
+
+$$\ell(\lambda) = \ln L(\lambda) = n \ln(\lambda) - \lambda \sum_{i=1}^{n} x_i$$
+
+**Step 3: Take the derivative with respect to $\lambda$**
+
+$$\frac{d\ell}{d\lambda} = \frac{n}{\lambda} - \sum_{i=1}^{n} x_i$$
+
+**Step 4: Set equal to zero and solve**
+
+$$\frac{n}{\hat{\lambda}} - \sum_{i=1}^{n} x_i = 0$$
+
+$$\frac{n}{\hat{\lambda}} = \sum_{i=1}^{n} x_i$$
+
+$$\hat{\lambda}_{MLE} = \frac{n}{\sum_{i=1}^{n} x_i} = \frac{1}{\bar{x}}$$
+
+**Conclusion:** The MLE of the rate parameter is $\hat{\lambda} = \frac{1}{\bar{x}}$, the reciprocal of the sample mean.
+
+(Equivalently, if using the mean parameterization where $\theta = 1/\lambda$, then $\hat{\theta}_{MLE} = \bar{x}$, the sample mean.)
+
+:::
+
+
+# Problem 2: Coding Practice
+
+## a. Simulation
+
+Simulate 100 observations from the following model:
+
+- $X \sim N(\mu = 1, \sigma = 1)$
+- $Y \sim N(\mu = 1 + 2X, \sigma = 2)$
+- $Z = \begin{cases} 1 &\quad Y<0 \\ 2 &\quad Y \ge 0 \end{cases}$
+
+::: {.callout-note title="Solution"}
+```{r}
+set.seed(2026)  # for reproducibility
+
+# Simulate 100 observations
+n <- 100
+
+# X ~ N(mu = 1, sigma = 1)
+X <- rnorm(n, mean = 1, sd = 1)
+
+# Y ~ N(mu = 1 + 2X, sigma = 2)
+Y <- rnorm(n, mean = 1 + 2*X, sd = 2)
+
+# Z = 1 if Y < 0, Z = 2 if Y >= 0
+Z <- ifelse(Y < 0, 1, 2)
+
+# Combine into a data frame
+sim_data <- data.frame(X = X, Y = Y, Z = Z)
+
+# Preview the data
+head(sim_data)
+```
+:::
+
+
+## b. Scatterplot
+
+Make a scatter plot of the data. Put $X$ on the x-axis and $Y$ on the y-axis. Color the points according to $Z$.
+
+::: {.callout-note title="Solution"}
+```{r}
+library(ggplot2)
+
+ggplot(sim_data, aes(x = X, y = Y, color = factor(Z))) +
+  geom_point(size = 2) +
+  labs(
+    title = "Scatterplot of Simulated Data",
+    x = "X",
+    y = "Y",
+    color = "Z"
+  ) +
+  theme_minimal()
+```
+:::
+
+
+## c. Function
+
+Write a function that adds two numbers together and squares the result.
+
+::: {.callout-note title="Solution"}
+```{r}
+# Function that adds two numbers and squares the result
+add_and_square <- function(a, b) {
+  result <- (a + b)^2
+  return(result)
+}
+
+# Test the function
+add_and_square(2, 3)  # Should return (2+3)^2 = 25
+add_and_square(1, 4)  # Should return (1+4)^2 = 25
+add_and_square(-1, 5) # Should return (-1+5)^2 = 16
+```
+:::
+
+
+
+# Problem 3: Statistics
+
+## a. Quantiles
+
+Find two [quantiles](https://en.wikipedia.org/wiki/Quantile) that capture 95% of the following data:
+
+::: {.panel-tabset}
+
+### R
+
+```{r}
+set.seed(2026)
+x = runif(n=100, min=2, max=22)
+```
+
+### Python
+
+```{python}
+import numpy as np
+
+rng = np.random.default_rng(2026)
+x = rng.uniform(low=2, high=22, size=100)
+```
+
+:::
+
+
+::: {.callout-note title="Solution"}
+```{r}
+set.seed(2026)
+x = runif(n=100, min=2, max=22)
+
+# Find the 2.5th and 97.5th percentiles to capture 95% of the data
+quantiles_95 <- quantile(x, probs = c(0.025, 0.975))
+quantiles_95
+```
+
+The two quantiles that capture 95% of the data are the 2.5th percentile and the 97.5th percentile. This leaves 2.5% of data in each tail, with 95% of observations falling between these values.
+
+:::
+
+
+## b. Confidence Interval
+
+A new machine learning model, developed by UVA researchers, uses biopsy images to predict if a child has enteropathy or celiac disease. [In a study of 102 patients](https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2735765), the model was able to correctly classify 95 of the images.
+
+Find the 90% [confidence interval](https://en.wikipedia.org/wiki/Confidence_interval) for the probability a patient is correctly classified?
+
+::: {.callout-note title="Solution"}
+```{r}
+# Given data
+n <- 102        # total patients
+x <- 95         # correctly classified
+p_hat <- x / n  # sample proportion
+
+p_hat  # point estimate
+```
+```{r}
+# Method 1: Using prop.test (Wilson score interval - recommended)
+prop.test(x = 95, n = 102, conf.level = 0.90)
+```
+```{r}
+# Method 2: Manual calculation using normal approximation (Wald interval)
+z <- qnorm(0.95)  # 90% CI uses z = 1.645 (leaving 5% in each tail)
+se <- sqrt(p_hat * (1 - p_hat) / n)  # standard error
+
+lower <- p_hat - z * se
+upper <- p_hat + z * se
+
+c(lower = lower, upper = upper)
+```
+
+The 90% confidence interval for the probability a patient is correctly classified is approximately **(0.88, 0.97)**.
+
+This means we are 90% confident that the true classification accuracy of the model is between 88% and 97%.
+
+:::
+
+
+## c. Linear Models
+
+- Albemarle County, VA real estate assessment data can be found [at this link](https://raw.githubusercontent.com/uvastatlab/phdplus/master/data/albemarle_homes.csv). Data collected by UVAs StatLab as part of the PhD plus program (https://github.com/uvastatlab/phdplus). 
+
+1. Fit a linear regression model that predicts the `totalvalue` using the predictors: `condition`, size (`finsqft`), and location (`city`).
+
+2. What are the fitted model parameters (i.e., the estimated coefficients)?
+
+3. What is the estimated `totalvalue` for home with the following characteristics?
+
+
+| finsqft | city        | condition |
+| ------: | ----------- | --------- |
+|    2500 | EARLYSVILLE | Good      |
+|    1850 | CROZET      | Fair      |
+
+
+::: {.callout-note title="Solution"}
+```{r}
+# Load the data
+homes <- read.csv("https://raw.githubusercontent.com/uvastatlab/phdplus/master/data/albemarle_homes.csv")
+
+# Preview the data
+head(homes)
+```
+```{r}
+# Fit the linear regression model
+model <- lm(totalvalue ~ condition + finsqft + city, data = homes)
+
+# View the model summary
+summary(model)
+```
+
+**Part 2: Fitted model parameters (coefficients)**
+```{r}
+# Extract coefficients
+coef(model)
+```
+
+**Part 3: Predictions for the specified homes**
+```{r}
+# Create data frame with the new homes to predict
+new_homes <- data.frame(
+  finsqft = c(2500, 1850),
+  city = c("EARLYSVILLE", "CROZET"),
+  condition = c("Good", "Fair")
+)
+
+# Predict totalvalue
+predictions <- predict(model, newdata = new_homes)
+
+# Display predictions with home characteristics
+new_homes$predicted_totalvalue <- predictions
+new_homes
+```
+:::
+
+
+## d. Hypothesis Testing
+
+Use the `movies` (IMDb) data from the [ModernDive book](https://moderndive.com/v2/) to performance a hypothesis test that *Action* movies are ranked lower (on average) than *Romance* movies.
+
+[movies.csv](https://raw.githubusercontent.com/moderndive/ModernDive_book/refs/heads/v2/data/movies.csv)
+
+::: {.callout-note title="Solution"}
+```{r}
+# Load the movies data
+movies <- read.csv("https://raw.githubusercontent.com/moderndive/ModernDive_book/refs/heads/v2/data/movies.csv")
+
+# Preview the data
+head(movies)
+```
+```{r}
+# Check the structure and see what columns we have
+str(movies)
+```
+```{r}
+# Filter for Action and Romance movies
+action_movies <- movies$rating[movies$genre == "Action"]
+romance_movies <- movies$rating[movies$genre == "Romance"]
+
+# Check sample sizes
+length(action_movies)
+length(romance_movies)
+```
+```{r}
+# Compare means
+mean(action_movies)
+mean(romance_movies)
+```
+```{r}
+# Perform one-sided t-test
+# H0: μ_action = μ_romance
+# Ha: μ_action < μ_romance (Action movies are ranked/rated lower)
+
+t.test(action_movies, romance_movies, alternative = "less")
+```
+
+**Hypotheses:**
+
+- $H_0$: $\mu_{Action} = \mu_{Romance}$ (no difference in average ratings)
+- $H_a$: $\mu_{Action} < \mu_{Romance}$ (Action movies have lower average ratings)
+
+**Conclusion:**
+
+Based on the p-value from the t-test, if p < 0.05 (or chosen significance level), we reject the null hypothesis and conclude that there is statistically significant evidence that Action movies are rated lower on average than Romance movies.
+
+:::

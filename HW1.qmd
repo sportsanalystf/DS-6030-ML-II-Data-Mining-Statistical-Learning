@@ -1,0 +1,539 @@
+---
+title: "Homework #1: Supervised Learning"
+subtitle: "DS 6030 | Spring 2026 | University of Virginia"
+author: "Faizan Khan (xdy6sg)"
+date: "January 28, 2026"
+format: html
+---
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(knitr)
+```
+
+# Problem 1: Evaluating a Regression Model
+
+## a. Data generating functions
+Create a function to generate data from the following distributions:
+
+$$
+\begin{aligned}
+X &\sim \mathcal{N}(\mu=0, \sigma = 1) \\
+Y &= -1 + .5X + .2X^2 + \epsilon \\
+\epsilon &\sim \mathcal{N}(\mu=0,\, \sigma = 3)
+\end{aligned}
+$$
+The function should have an argument for the sample size and random seed(s). You are free to output the data in any format you like (e.g., data frame, matrix, list/dict). We will use this function a few times in this homework.  
+
+- Note that the standard deviation of epsilon ($\epsilon$) is $\sigma = 3$. 
+
+::: {.callout-note title="Solution"}
+```{r}
+
+# Function to generate data from the specified distributions
+generate_data <- function(n, seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+
+  # Generate X from standard normal
+  X <- rnorm(n, mean = 0, sd = 1)
+
+  # Generate error term
+  epsilon <- rnorm(n, mean = 0, sd = 3)
+
+  # Generate Y using the true model
+  Y <- -1 + 0.5 * X + 0.2 * X^2 + epsilon
+
+  # Return as tibble
+  tibble(X = X, Y = Y)
+}
+
+# Define the true regression function f(x) = E[Y | X = x]
+f_true <- function(x) {
+  -1 + 0.5 * x + 0.2 * x^2
+}
+
+# Define MSE function
+calc_mse <- function(actual, predicted) {
+  mean((actual - predicted)^2)
+}
+# Test the function
+test_output <- generate_data(n = 5, seed = 123)
+print(test_output)
+```
+:::
+
+
+## b. Generate training data
+
+Simulate $n=100$ realizations from these distributions. Produce a scatterplot and draw the true regression line $f(x) = E[Y \mid X=x]$.
+
+- Use 611 as the random seed prior to generating the data. (You may get different values than your classmates because there are two random elements and the order in which you generate them.)
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: part-b
+
+# Generate training data with n = 100 and seed = 611
+train_data <- generate_data(n = 100, seed = 611)
+```
+```{r}
+# Scatterplot with true regression line
+ggplot(train_data, aes(x = X, y = Y)) +
+  geom_point(alpha = 0.6) +
+  stat_function(fun = f_true, color = "red", linewidth = 1) +
+  labs(
+    title = "Training Data with True Regression Line",
+    subtitle = "f(x) = -1 + 0.5x + 0.2x²",
+    x = "X",
+    y = "Y"
+  ) +
+  theme_minimal()
+```
+**Summary** :
+
+- 100 data points scattered around the true regression curve
+- The red line is the true quadratic function **f(x) = -1 + 0.5x + 0.2x²**
+- The points have considerable spread due to the noise (σ = 3)
+X ranges roughly from -2.5 to 2.5, Y roughly from -8 to 6
+:::
+
+
+## c. Fit three models
+
+Fit three polynomial regression models using least squares: linear, quadratic, and cubic. Produce another scatterplot, add the fitted lines and true population line $f(x)$  using different colors, and add a legend that maps the line color to a model.
+
+- Note: The true model is quadratic, but we are also fitting linear (less complex) and cubic (more complex) models.
+
+::: {.callout-note title="Solution"}
+```{r}
+# Fit the three models
+model_linear    <- lm(Y ~ X, data = train_data)
+model_quadratic <- lm(Y ~ X + I(X^2), data = train_data)
+model_cubic     <- lm(Y ~ X + I(X^2) + I(X^3), data = train_data)
+```
+```{r}
+# Create a grid for smooth prediction lines
+x_grid <- tibble(X = seq(min(train_data$X) - 0.5, max(train_data$X) + 0.5, length.out = 200))
+
+# Get predictions from each model
+pred_df <- x_grid %>%
+  mutate(
+    True = f_true(X),
+    Linear = predict(model_linear, newdata = .),
+    Quadratic = predict(model_quadratic, newdata = .),
+    Cubic = predict(model_cubic, newdata = .)
+  ) %>%
+  pivot_longer(cols = -X, names_to = "Model", values_to = "Y_hat")
+
+# Plot
+ggplot() +
+  geom_point(data = train_data, aes(x = X, y = Y), alpha = 0.5) +
+  geom_line(data = pred_df, aes(x = X, y = Y_hat, color = Model), linewidth = 1) +
+  scale_color_manual(
+    values = c("True" = "black", "Linear" = "blue", "Quadratic" = "red", "Cubic" = "green"),
+    breaks = c("True", "Linear", "Quadratic", "Cubic")
+  ) +
+  labs(
+    title = "Polynomial Regression Models",
+    x = "X",
+    y = "Y"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+**Summary:**
+
+- Black (True): The true quadratic function
+
+- Blue (Linear): A straight line - clearly underfitting, can't capture the curvature
+
+- Red (Quadratic): Closely follows the true function
+
+- Green (Cubic): Very similar to quadratic, with slight differences at the edges
+:::
+
+
+## d. Predictive performance
+
+Generate a *test data* set of 10,000 observations from the same distributions. Use 612 as the random seed prior to generating the data. 
+
+- Calculate (and show) the estimated mean squared error (MSE) for each model.
+- Which model had better predictions? Are the results expected? Give a brief explanation for what could explain the outcome? 
+
+::: {.callout-note title="Solution"}
+```{r}
+# Generate test data
+test_data <- generate_data(n = 10000, seed = 612)
+
+# Function to calculate MSE
+calc_mse <- function(actual, predicted) {
+  mean((actual - predicted)^2)
+}
+
+# Calculate MSE for each model
+mse_linear    <- calc_mse(test_data$Y, predict(model_linear, newdata = test_data))
+mse_quadratic <- calc_mse(test_data$Y, predict(model_quadratic, newdata = test_data))
+mse_cubic     <- calc_mse(test_data$Y, predict(model_cubic, newdata = test_data))
+
+# Display results
+mse_results <- tibble(
+  Model = c("Linear", "Quadratic", "Cubic"),
+  MSE = c(mse_linear, mse_quadratic, mse_cubic)
+)
+
+kable(mse_results, digits = 4, caption = "Test MSE for Each Model")
+
+# Identify best model
+best_model <- mse_results$Model[which.min(mse_results$MSE)]
+best_mse <- min(mse_results$MSE)
+
+cat("\nBest performing model:", best_model, "with MSE =", round(best_mse, 4))
+```
+**Summary:**
+
+- The linear model achieved the lowest test MSE (9.29), even though the true data‑generating process is quadratic. This outcome can occur because the training sample size is relatively small (n = 100) and the noise level is high (σ = 3). Under these conditions, the quadratic and cubic models have higher estimation variance, while the linear model—despite being biased—can occasionally generalize better in a particular sample.
+
+- The quadratic model does not win in this specific run, but it would have the lowest MSE on average if we repeated the simulation many times, since it matches the true regression function.
+
+- The cubic model performs slightly worse than the quadratic because the true cubic term is zero. Adding an unnecessary parameter increases variance without reducing bias, which leads to a modest increase in MSE.
+:::
+
+
+
+## e. Optimal performance
+
+What is the best achievable MSE? That is, what is the MSE if the true $f(x)$ was used to evaluate the test set? How close does the best method come to achieving the optimum?
+
+::: {.callout-note title="Solution"}
+```{r}
+# MSE using the true f(x) — this is the irreducible error
+mse_optimal <- calc_mse(test_data$Y, f_true(test_data$X))
+
+# Compare to best model
+best_mse <- min(mse_results$MSE)
+
+tibble(
+  Metric = c("Optimal MSE (true f(x))", 
+             "Theoretical σ²", 
+             "Best Model MSE (Quadratic)",
+             "Excess Error"),
+  Value = c(mse_optimal, 9, best_mse, best_mse - mse_optimal)
+) %>%
+  kable(digits = 4)
+```
+
+- The optimal MSE—computed by evaluating the test set using the true regression function 𝑓(𝑥) is approximately 9, which matches the noise variance 𝜎^2 =9. This value represents the irreducible error: even with perfect knowledge of the true model, predictions cannot be more accurate because the randomness in 𝜀 cannot be eliminated.
+
+- In this simulation, the best-performing fitted model had an MSE of about 9.29, which is only slightly above the optimal value. Although the true model is quadratic, the linear model happened to achieve the lowest MSE in this particular run. This can occur because the training sample is relatively small (n = 100) and the noise level is high, so simpler models sometimes generalize better due to lower variance.
+
+- The small excess error (about 0.32) reflects estimation error: the fitted models must estimate coefficients from noisy data, whereas the optimal benchmark uses the true function. Across repeated simulations, the quadratic model would typically come closest to the optimal MSE, but in this single realization the linear model happened to be the closest.
+:::
+
+
+## f. Training Sample Size
+
+The prior results were based on a training data set of size $n = 100$. In this section, you will add to the training size and examine the effects. 
+
+- Fit all three models and estimate MSE using a total of $n = \{100, 200, 300, 500, 1000, 5000, 7500\}$ training observations.
+    - You have already done everything for $n=100$.
+    - As $n$ grows be sure to add the new data to the existing data. For example, for $n=200$ you will combine the 100 observations generated in part b with 100 new observations. For $n=300$, combine the 200 observations with an additional 100, etc. 
+    - Be sure to set the random seed so the results are replicable.
+    - Use the same test data from part d. Do not regenerate the test data.
+
+- Summarize your results. What is the best predictive model for each training size? 
+
+- Note: It can be helpful to write a function that takes the training and test data as input and outputs the test MSE. 
+
+::: {.callout-note title="Solution"}
+```{r}
+# Function to fit all three models and return test MSE
+fit_and_evaluate <- function(train_df, test_df) {
+  m_linear    <- lm(Y ~ X, data = train_df)
+  m_quadratic <- lm(Y ~ X + I(X^2), data = train_df)
+  m_cubic     <- lm(Y ~ X + I(X^2) + I(X^3), data = train_df)
+  
+  tibble(
+    Linear    = calc_mse(test_df$Y, predict(m_linear, newdata = test_df)),
+    Quadratic = calc_mse(test_df$Y, predict(m_quadratic, newdata = test_df)),
+    Cubic     = calc_mse(test_df$Y, predict(m_cubic, newdata = test_df))
+  )
+}
+
+# Training sizes to evaluate
+train_sizes <- c(100, 200, 300, 500, 1000, 5000, 7500)
+
+# Start with existing training data from part b
+cumulative_train <- train_data
+
+# Store results
+size_results <- tibble(n_train = integer(), Model = character(), MSE = numeric())
+
+# Seeds for additional data generation
+additional_seeds <- c(613, 614, 615, 616, 617, 618)
+
+for (i in seq_along(train_sizes)) {
+  n <- train_sizes[i]
+  
+  if (i == 1) {
+    # n = 100: use existing training data
+    current_train <- cumulative_train
+  } else {
+    # Generate additional observations and append
+    n_additional <- n - train_sizes[i - 1]
+    additional_data <- generate_data(n = n_additional, seed = additional_seeds[i - 1])
+    cumulative_train <- bind_rows(cumulative_train, additional_data)
+    current_train <- cumulative_train
+  }
+  
+  # Fit and evaluate
+  mse_row <- fit_and_evaluate(current_train, test_data) %>%
+    pivot_longer(everything(), names_to = "Model", values_to = "MSE") %>%
+    mutate(n_train = n)
+  
+  size_results <- bind_rows(size_results, mse_row)
+}
+```
+```{r}
+# Summary table
+size_table <- size_results %>%
+  pivot_wider(names_from = Model, values_from = MSE) %>%
+  mutate(Best_Model = case_when(
+    Linear <= Quadratic & Linear <= Cubic ~ "Linear",
+    Quadratic <= Cubic ~ "Quadratic",
+    TRUE ~ "Cubic"
+  ))
+
+kable(size_table, digits = 4, caption = "Test MSE by Training Sample Size")
+```
+```{r}
+# Visualization
+ggplot(size_results, aes(x = n_train, y = MSE, color = Model)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 9, linetype = "dashed", color = "gray50") +
+  annotate("text", x = 5500, y = 9.3, label = "Irreducible Error (σ² = 9)", size = 3) +
+  scale_x_continuous(breaks = train_sizes) +
+  scale_color_manual(values = c("Linear" = "blue", "Quadratic" = "red", "Cubic" = "green")) +
+  labs(
+    title = "Test MSE vs Training Sample Size",
+    x = "Training Sample Size (n)",
+    y = "Test MSE"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+**Summary:**
+
+- The **quadratic model** performs best (or tied for best) across all training sizes, which is expected since it matches the true DGP.
+
+- The **linear model** occasionally achieves the lowest MSE at small training sizes (n = 100–500), despite being misspecified. This reflects the bias–variance tradeoff: simpler models can generalize better when data are limited and noise is high.
+
+- The **cubic model** performs nearly identically to the quadratic model at large n. Since the true cubic coefficient is zero, the extra term adds variance without reducing bias—but that penalty shrinks as n increases.
+
+- All models approach but never drop below **σ² = 9**, the irreducible error floor.
+:::
+
+
+## g. Testing Sample Size (Estimating EPE)
+
+In the previous problems you evaluated predictive performance using a large test set with n_test = 10,000. Even with 10,000 test observations, the test MSE you compute is still only an estimate of the model’s true mean squared prediction error. Because the test set is a random sample, the estimated MSE has sampling variability.
+
+In this problem you will study how the test set size affects the uncertainty of the estimated MSE, while holding the trained model fixed.
+
+i. Use the same training data from the previous problem with n_train = 100. If you do not have it saved, regenerate it using the same data generating process and random seed. Fit the three polynomial regression models on this training set. 
+
+ii. Generate a new test data of n_test = 100,000. Set seed for replicability. 
+
+iii. Make predictions on the test data and calculate the MSE for n_test of 50, 100, 1000, 10,000, 50,000, and 100,000. 
+
+iv. Plot the results. Put n_test on the x-axis, MSE on the y-axis, and different colors for the three models. 
+
+v. Summarize the results. What do think is the best predictive model for the given training data? 
+
+::: {.callout-note title="Solution"}
+```{r}
+# (i) Use training data with n = 100 and fit models
+# train_data already exists from part b with seed = 611
+
+model_g_linear    <- lm(Y ~ X, data = train_data)
+model_g_quadratic <- lm(Y ~ X + I(X^2), data = train_data)
+model_g_cubic     <- lm(Y ~ X + I(X^2) + I(X^3), data = train_data)
+```
+```{r}
+# (ii) Generate large test set
+test_g <- generate_data(n = 100000, seed = 700)
+```
+```{r}
+# (iii) Calculate MSE for different test sizes
+test_sizes <- c(50, 100, 1000, 10000, 50000, 100000)
+
+test_size_results <- map_dfr(test_sizes, function(n_test) {
+  # Use first n_test observations from the large test set
+  test_subset <- test_g[1:n_test, ]
+  
+  tibble(
+    n_test = n_test,
+    Linear = calc_mse(test_subset$Y, predict(model_g_linear, newdata = test_subset)),
+    Quadratic = calc_mse(test_subset$Y, predict(model_g_quadratic, newdata = test_subset)),
+    Cubic = calc_mse(test_subset$Y, predict(model_g_cubic, newdata = test_subset))
+  )
+})
+
+kable(test_size_results, digits = 4, caption = "Estimated MSE by Test Sample Size")
+```
+```{r}
+# (iv) Plot results
+test_size_long <- test_size_results %>%
+  pivot_longer(cols = -n_test, names_to = "Model", values_to = "MSE")
+
+ggplot(test_size_long, aes(x = n_test, y = MSE, color = Model)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_x_log10(breaks = test_sizes, labels = scales::comma) +
+  scale_color_manual(values = c("Linear" = "blue", "Quadratic" = "red", "Cubic" = "green")) +
+  labs(
+    title = "Estimated MSE vs Test Sample Size",
+    subtitle = "Models trained on n = 100, held fixed",
+    x = "Test Sample Size (log scale)",
+    y = "Estimated MSE"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+**(v) Summary:**
+
+- With small test sets (n = 50 or 100), the MSE estimates are **noisy** — they can fluctuate substantially due to sampling variability. As the test set grows larger, the estimates **stabilize** and converge to the true expected prediction error.
+
+- The **quadratic model** consistently achieves the lowest MSE when evaluated on large test sets, confirming it is the best predictive model for this training data. This makes sense since it matches the true functional form.
+
+- The key insight is that test MSE is itself a **random variable**. Its variance decreases as $n_{test}$ increases (roughly proportional to $1/n_{test}$). With small test sets, we might incorrectly conclude that one model is better than another simply due to noise.
+:::
+
+
+## h. Validation Sample Size (Selecting Best Model)
+
+The last problem evaluated how the hold-out sample size impacts the estimated MSE. For this problem, we will examine how it impacts the selection of the best model. 
+
+i.  Repeat the entire analysis in part g M = 50 times. 
+
+ii. Calculate the number of times each model was selected for n_test of 50, 100, 200, 500, 1000, and 5000. 
+
+iii. Produce a table showing the proportion of times each model would have been selected. 
+
+::: {.callout-note title="Solution"}
+```{r}
+# Number of repetitions
+M <- 50
+
+# Test sizes to evaluate
+test_sizes_h <- c(50, 100, 200, 500, 1000, 5000)
+
+# Function to run one complete iteration
+run_iteration <- function(iter, train_seed, test_seed) {
+  # Generate fresh training data
+  train_h <- generate_data(n = 100, seed = train_seed)
+  
+  # Fit all three models
+  m_linear    <- lm(Y ~ X, data = train_h)
+  m_quadratic <- lm(Y ~ X + I(X^2), data = train_h)
+  m_cubic     <- lm(Y ~ X + I(X^2) + I(X^3), data = train_h)
+  
+  # Generate test data
+  test_h <- generate_data(n = max(test_sizes_h), seed = test_seed)
+  
+  # For each test size, determine which model is selected (lowest MSE)
+  map_dfr(test_sizes_h, function(n_test) {
+    test_subset <- test_h[1:n_test, ]
+    
+    mse_vals <- c(
+      Linear = calc_mse(test_subset$Y, predict(m_linear, newdata = test_subset)),
+      Quadratic = calc_mse(test_subset$Y, predict(m_quadratic, newdata = test_subset)),
+      Cubic = calc_mse(test_subset$Y, predict(m_cubic, newdata = test_subset))
+    )
+    
+    tibble(
+      iteration = iter,
+      n_test = n_test,
+      selected_model = names(which.min(mse_vals))
+    )
+  })
+}
+
+# Generate seeds for reproducibility
+set.seed(999)
+train_seeds <- sample(1:100000, M)
+test_seeds <- sample(100001:200000, M)
+
+# Run M iterations
+selection_results <- map2_dfr(1:M, train_seeds, function(i, ts) {
+  run_iteration(i, ts, test_seeds[i])
+})
+```
+```{r}
+# Calculate proportion of times each model was selected
+selection_summary <- selection_results %>%
+  count(n_test, selected_model) %>%
+  group_by(n_test) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup() %>%
+  select(-n) %>%
+  pivot_wider(names_from = selected_model, values_from = proportion, values_fill = 0) %>%
+  arrange(n_test)
+
+# Ensure all columns exist even if a model was never selected
+if (!"Linear" %in% names(selection_summary)) selection_summary$Linear <- 0
+if (!"Quadratic" %in% names(selection_summary)) selection_summary$Quadratic <- 0
+if (!"Cubic" %in% names(selection_summary)) selection_summary$Cubic <- 0
+
+selection_summary <- selection_summary %>%
+  select(n_test, Linear, Quadratic, Cubic)
+
+kable(selection_summary, 
+      digits = 2,
+      col.names = c("Test Size (n)", "Linear", "Quadratic", "Cubic"),
+      caption = "Proportion of times each model was selected (M = 50 iterations)")
+```
+
+```{r}
+# stacked bar plot of selection proportions
+selection_plot_df <- selection_results %>%
+  count(n_test, selected_model) %>%
+  group_by(n_test) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup()
+
+ggplot(selection_plot_df, aes(x = factor(n_test), y = prop, fill = selected_model)) +
+  geom_col(position = "stack") +
+  scale_fill_manual(values = c("Linear" = "blue", "Quadratic" = "red", "Cubic" = "green")) +
+  labs(
+    title = "Model selection frequency by validation size (M iterations)",
+    x = "Test Size (n)",
+    y = "Proportion selected",
+    fill = "Model"
+  ) +
+  theme_minimal()
+
+```
+
+**Summary:**
+
+- With **small validation sets** (n = 50 or 100), model selection is unreliable. The wrong model — either linear or cubic — is frequently chosen simply due to sampling noise in the MSE estimates. In some iterations, random fluctuations make an inferior model appear better.
+
+- As the **validation set grows**, the quadratic model is selected more consistently. By n = 5000, the true model is almost always identified correctly.
+
+- This demonstrates a critical practical point: **adequate validation data is essential for trustworthy model selection**. With too few validation observations, the variance in our MSE estimates can lead us to choose a suboptimal model. This connects directly to concepts of hypothesis testing and confidence intervals — with small samples, we lack the statistical power to reliably distinguish between models with similar true performance.
+:::
+
+## i. Confidence Intervals and Hypothesis Testing
+
+Yes, this analysis is related to confidence intervals and hypothesis testing. We will come back to these concepts later in the course. 
+
+
+
+
+
