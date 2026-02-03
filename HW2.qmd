@@ -1,0 +1,1073 @@
+---
+title: "Homework #2: Model Selection and Performance Estimation" 
+---
+
+# Set-up
+
+In this homework you will study model tuning, predictive performance, and uncertainty quantification using elastic net regression. All models should be fit using elastic net type regularization, with tuning over the regularization/penalty parameter and, where feasible, the mixing parameter.
+
+## Data
+
+The goal is to predict the year that a song was released based on audio features. Each dataset contains an outcome variable (`Y` song release year) and a set of $p=45$ numeric predictors (`X1` to `X45`) derived from audio features.
+
+-   [training data](https://mdporter.github.io/teaching/data/yrpred-train.csv)
+-   [validation data](https://mdporter.github.io/teaching/data/yrpred-validate.csv)
+-   [testing data](https://mdporter.github.io/teaching/data/yrpred-test.csv)
+
+## Modeling requirements
+
+All predictive models in this homework must be elastic net regression models. You may use any software package you prefer that implements elastic net regression, such as `glmnet` and `tidymodels` in R or `scikit learn` in Python.
+
+Unless otherwise stated, performance should be evaluated using root mean squared error (RMSE).
+
+**Elastic net regression**
+
+Elastic net regression is a linear regression model with regularization that combines the ideas of ridge regression and the lasso. The model is fit by minimizing a loss function that balances prediction accuracy with a penalty on the size of the regression coefficients.
+
+Specifically, elastic net minimizes the prediction error plus a weighted combination of an $\ell_1$ penalty (lasso) and an $\ell_2$ penalty (ridge).
+
+Two tuning parameters control this balance. The `mixture` parameter controls the tradeoff between $\ell_1$ (lasso) and $\ell_2$ (ridge) penalties. The `penalty` parameter controls the strength of the overall penalty.
+
+::: {.callout-note collapse="true" title="Elastic Net Tuning Parameter Details"}
+### Mixing parameter
+
+The first tuning parameter controls the relative contribution of the $\ell_1$ and $\ell_2$ penalties. When this parameter is set to emphasize the $\ell_1$ penalty, the model behaves like the lasso and tends to produce sparse solutions with many coefficients exactly equal to zero. When it emphasizes the $\ell_2$ penalty, the model behaves like ridge regression and tends to shrink coefficients toward zero without setting them exactly to zero. Intermediate values produce a combination of both behaviors.
+
+The mixing parameter is:
+
+| package | name | link |
+|------------------------------|--------------------|-----------------------|
+| R `glmnet()` | `alpha` (1 = lasso, 0 = ridge) | [link](https://glmnet.stanford.edu/articles/glmnet.html) |
+| R tidymodels `parsnip::linear_reg()` | `mixture` (1 = lasso, 0 = ridge) | [link](https://parsnip.tidymodels.org/reference/glmnet-details.html) |
+| scikit learn `ElasticNet` | `l1_ratio` (1 = lasso, 0 = ridge) | [link](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html) |
+
+### Overall regularization/penalty strength
+
+The second tuning parameter controls the overall strength of regularization. Larger values increase shrinkage and reduce model variance at the cost of increased bias, while smaller values reduce shrinkage and move the model closer to ordinary least squares.
+
+| package | name | link |
+|------------------------------|--------------------|-----------------------|
+| R `glmnet()` | `lambda` | [link](https://glmnet.stanford.edu/articles/glmnet.html) |
+| R tidymodels `parsnip::linear_reg()` | `penalty` | [link](https://parsnip.tidymodels.org/reference/glmnet-details.html) |
+| scikit learn `ElasticNet` | `alpha` | [link](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html) |
+:::
+
+## Computational guidance and fallback options
+
+Some parts of this homework involve repeated or nested cross validation, which can be computationally demanding depending on your hardware. If you encounter computing or memory limitations, you may use one or more of the following simplifications. Clearly state any simplifications you use in your solution.
+
+-   Reduce the size of the training and validation data by random subsampling, while keeping the test set fixed.
+-   Reduce the cross validation complexity by using fewer folds or fewer repetitions.
+-   Fix mixture to 1 (lasso) and tune only penalty.
+
+You should not modify the test dataset or reduce its size unless explicitly instructed.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: install-glmnet
+#| eval: false
+
+install.packages("glmnet", repos = "https://cloud.r-project.org")
+```
+```{r}
+
+#| label: setup
+#| message: false
+#| warning: false
+
+# Load required packages
+library(tidyverse)
+library(glmnet)
+
+# Set seed for reproducibility
+set.seed(42)
+```
+```{r}
+#| label: load-data
+
+# Load the datasets
+train_data <- read_csv("https://mdporter.github.io/teaching/data/yrpred-train.csv",
+                       show_col_types = FALSE)
+valid_data <- read_csv("https://mdporter.github.io/teaching/data/yrpred-validate.csv",
+                       show_col_types = FALSE)
+test_data <- read_csv("https://mdporter.github.io/teaching/data/yrpred-test.csv",
+                      show_col_types = FALSE)
+
+# Display dimensions
+tibble(
+  Dataset = c("Training", "Validation", "Test"),
+  Rows = c(nrow(train_data), nrow(valid_data), nrow(test_data)),
+  Columns = c(ncol(train_data), ncol(valid_data), ncol(test_data))
+) |> knitr::kable()
+```
+```{r}
+#| label: explore-data
+
+# Summary of outcome variable (song release year)
+summary(train_data$Y)
+```
+:::
+
+# Problem 1: Tuning using a single validation set
+
+## a. Tuning
+
+Fit models on the training data and use the validation set to tune mixture and penalty to minimize RMSE. Clearly report the selected values of mixture and penalty, along with the corresponding validation RMSE.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p1a-tuning
+
+# Prepare matrices for glmnet
+X_train <- as.matrix(select(train_data, starts_with("X")))
+y_train <- train_data$Y
+
+X_valid <- as.matrix(select(valid_data, starts_with("X")))
+y_valid <- valid_data$Y
+
+# Define tuning grid
+mixture_values <- seq(0, 1, by = 0.1)
+
+# Store results
+tuning_results <- tibble()
+
+for (mix in mixture_values) {
+  fit <- glmnet(X_train, y_train, alpha = mix)
+  preds <- predict(fit, newx = X_valid)
+  rmse_vals <- apply(preds, 2, function(pred) sqrt(mean((y_valid - pred)^2)))
+  
+  tuning_results <- bind_rows(
+    tuning_results,
+    tibble(mixture = mix, penalty = fit$lambda, rmse = rmse_vals)
+  )
+}
+
+# Find best combination
+best_params <- tuning_results[which.min(tuning_results$rmse), ]
+
+best_mixture <- best_params$mixture[1]
+best_penalty <- best_params$penalty[1]
+best_valid_rmse <- best_params$rmse[1]
+
+cat("Selected tuning parameters:\n")
+cat("  Mixture:", best_mixture, "\n")
+cat("  Penalty:", round(best_penalty, 6), "\n")
+cat("  Validation RMSE:", round(best_valid_rmse, 4), "\n")
+```
+```{r}
+#| label: p1a-plot
+
+ggplot(tuning_results, aes(x = log10(penalty), y = rmse, color = factor(mixture))) +
+  geom_line() +
+  geom_point(data = best_params, color = "red", size = 3, shape = 4, stroke = 2) +
+  labs(title = "Validation RMSE across Tuning Grid",
+       x = "log10(Penalty)", y = "RMSE", color = "Mixture") +
+  theme_minimal()
+```
+
+The optimal parameters are mixture = 0.9 (close to pure lasso) and penalty = 0.00284, yielding a validation RMSE of 9.37. The plot shows that lower mixture values (more ridge-like) generally perform worse, and very high penalties increase RMSE substantially due to underfitting.
+
+The tuning grid covers 11 mixture values (0 to 1 by 0.1) × ~100 lambda values per mixture (auto-generated by glmnet), resulting in approximately 1,100 hyperparameter combinations evaluated.
+
+:::
+
+## b. Fit final model
+
+Refit the model using the combined training and validation data, fixing mixture and penalty at the selected values from part (a).
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p1b-final-model
+
+# Combine training and validation data
+combined_data <- bind_rows(train_data, valid_data)
+
+X_combined <- as.matrix(select(combined_data, starts_with("X")))
+y_combined <- combined_data$Y
+
+# Fit final model with selected parameters
+final_model_p1 <- glmnet(X_combined, y_combined, 
+                          alpha = best_mixture, 
+                          lambda = best_penalty)
+
+cat("Final model fitted on combined data:\n")
+cat("  Training observations:", nrow(combined_data), "\n")
+cat("  Non-zero coefficients:", sum(coef(final_model_p1) != 0) - 1, "\n")
+```
+
+The final model is trained on 12,000 observations (combined training and validation sets). With mixture = 0.9 and penalty = 0.00284, all 45 predictors are retained in the model — the regularization is not strong enough to shrink any coefficients exactly to zero. This suggests the penalty is relatively mild, prioritizing predictive accuracy over sparsity.
+
+```{r}
+#| label: p1b-coef-plot
+#| fig-width: 8
+#| fig-height: 6
+
+# Visualize coefficient paths
+fit_path <- glmnet(X_combined, y_combined, alpha = best_mixture)
+
+plot(fit_path, xvar = "lambda", label = TRUE)
+abline(v = log(best_penalty), lty = 2, col = "red")
+title("Coefficient Paths (red line = selected lambda)")
+```
+
+:::
+
+## c. Predict on a subset of the test data
+
+Using the final fitted model, predict outcomes for the first 1000 observations in the test set. Compute and report the test RMSE for this subset.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p1c-partial-test
+
+# Prepare test data (first 1000 observations)
+X_test_partial <- as.matrix(select(test_data[1:1000, ], starts_with("X")))
+y_test_partial <- test_data$Y[1:1000]
+
+# Predict
+preds_partial <- predict(final_model_p1, newx = X_test_partial, s = best_penalty)
+
+# Calculate RMSE
+rmse_partial <- sqrt(mean((y_test_partial - preds_partial)^2))
+
+# Store residuals for CI calculations later
+residuals_partial <- y_test_partial - preds_partial
+
+cat("Test RMSE (first 1000 observations):", round(rmse_partial, 4), "\n")
+```
+
+The test RMSE on the first 1000 observations is 9.48, which is slightly higher than the validation RMSE of 9.37. This small increase is expected since the model hyperparameters were optimized on the validation set. The residuals are stored for constructing confidence intervals in the following parts.
+
+:::
+
+## d. 90% confidence interval via normal theory
+
+Construct a 90% confidence interval for the RMSE in part (c) using a [normal theory approximation](https://online.stat.psu.edu/stat200/lesson/8/8.2/8.2.2/8.2.2.1).
+
+Report the CI.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p1d-normal-ci
+
+n_partial <- length(residuals_partial)
+squared_errors <- residuals_partial^2
+
+# Standard error of MSE: SE(MSE) = sd(squared_errors) / sqrt(n)
+se_mse <- sd(squared_errors) / sqrt(n_partial)
+
+# Standard error of RMSE using delta method: SE(RMSE) = SE(MSE) / (2 * RMSE)
+se_rmse <- se_mse / (2 * rmse_partial)
+
+# 90% CI using z = 1.645
+z_90 <- qnorm(0.95)
+ci_lower_normal <- rmse_partial - z_90 * se_rmse
+ci_upper_normal <- rmse_partial + z_90 * se_rmse
+
+cat("90% Confidence Interval (Normal Theory):\n")
+cat("  [", round(ci_lower_normal, 4), ", ", round(ci_upper_normal, 4), "]\n", sep = "")
+```
+
+The 90% confidence interval for RMSE using normal theory is [8.95, 10.00]. This interval is constructed via the delta method, which approximates the standard error of RMSE from the variance of squared errors. With 1000 test observations, we are 90% confident that the true expected RMSE falls within this range.
+:::
+
+## e. 90% confidence interval via bootstrap
+
+Construct a 90% confidence interval for the RMSE in part (c) using a bootstrap procedure (e.g., <https://openintro-ims.netlify.app/foundations-bootstrapping>. Specify:
+
+-   the bootstrap type (e.g., percentile, bias-corrected, normal, studentized)
+-   the number of bootstrap resamples used
+
+Report the CI.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p1e-bootstrap-ci
+
+set.seed(42)
+
+# Bootstrap parameters
+n_boot <- 2000
+
+# Bootstrap resampling of residuals
+boot_rmse <- replicate(n_boot, {
+  boot_idx <- sample(1:n_partial, n_partial, replace = TRUE)
+  sqrt(mean(residuals_partial[boot_idx]^2))
+})
+
+# Percentile method for 90% CI
+ci_lower_boot <- quantile(boot_rmse, 0.05)
+ci_upper_boot <- quantile(boot_rmse, 0.95)
+
+cat("90% Confidence Interval (Bootstrap - Percentile Method):\n")
+cat("  [", round(ci_lower_boot, 4), ", ", round(ci_upper_boot, 4), "]\n", sep = "")
+cat("\nBootstrap specifications:\n")
+cat("  Method: Percentile\n")
+cat("  Number of resamples:", n_boot, "\n")
+```
+
+The 90% bootstrap confidence interval is [8.93, 9.98], using the percentile method with 2000 resamples. This is very similar to the normal theory interval [8.95, 10.00], which provides reassurance that both methods are giving consistent estimates of uncertainty. The bootstrap method makes fewer distributional assumptions and directly estimates the sampling distribution of RMSE.
+:::
+
+## f. Full test set evaluation
+
+Predict outcomes for the *entire test set* and compute the RMSE.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p1f-full-test
+
+# Prepare full test data
+X_test_full <- as.matrix(select(test_data, starts_with("X")))
+y_test_full <- test_data$Y
+
+# Predict
+preds_full <- predict(final_model_p1, newx = X_test_full, s = best_penalty)
+
+# Calculate RMSE
+rmse_full <- sqrt(mean((y_test_full - preds_full)^2))
+
+# Store residuals for CI calculations
+residuals_full <- y_test_full - preds_full
+
+cat("Test RMSE (full test set):", round(rmse_full, 4), "\n")
+cat("Number of test observations:", length(y_test_full), "\n")
+```
+
+The full test set RMSE is 9.60 with 20,000 observations. This is slightly higher than the partial test set RMSE (9.48), indicating some variability across different portions of the test data. With 20x more observations, the confidence intervals in part (g) should be substantially narrower.
+
+```{r}
+#| label: p1f-diagnostics
+#| fig-width: 10
+#| fig-height: 4
+
+par(mfrow = c(1, 3))
+
+# Residuals vs Fitted
+plot(preds_full, residuals_full, 
+     xlab = "Fitted Values", ylab = "Residuals",
+     main = "Residuals vs Fitted", pch = 20, col = rgb(0,0,0,0.1))
+abline(h = 0, col = "red", lty = 2)
+
+# Histogram of residuals
+hist(residuals_full, breaks = 50, main = "Distribution of Residuals",
+     xlab = "Residuals", col = "lightblue", border = "white")
+
+# QQ plot
+qqnorm(residuals_full, pch = 20, col = rgb(0,0,0,0.1))
+qqline(residuals_full, col = "red")
+
+par(mfrow = c(1, 1))
+```
+
+The residual diagnostics show approximately symmetric errors centered around zero, with some heavy tails visible in the Q-Q plot. This suggests the normal theory confidence intervals may be slightly conservative, supporting the use of bootstrap methods.
+
+:::
+
+## g. 90% confidence intervals for the full test set
+
+Using the predictions from part (f), construct 90% confidence intervals for the RMSE using:
+
+-   normal theory
+-   bootstrap method (use the same bootstrap approach as in part e.)
+
+Report the CI.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p1g-normal-ci
+
+n_full <- length(residuals_full)
+
+# Normal Theory CI
+squared_errors_full <- residuals_full^2
+se_mse_full <- sd(squared_errors_full) / sqrt(n_full)
+se_rmse_full <- se_mse_full / (2 * rmse_full)
+
+ci_lower_normal_full <- rmse_full - z_90 * se_rmse_full
+ci_upper_normal_full <- rmse_full + z_90 * se_rmse_full
+
+cat("90% CI (Normal Theory):\n")
+cat("  [", round(ci_lower_normal_full, 4), ", ", round(ci_upper_normal_full, 4), "]\n", sep = "")
+```
+```{r}
+#| label: p1g-bootstrap-ci
+
+set.seed(42)
+
+# Bootstrap CI
+boot_rmse_full <- replicate(n_boot, {
+  boot_idx <- sample(1:n_full, n_full, replace = TRUE)
+  sqrt(mean(residuals_full[boot_idx]^2))
+})
+
+ci_lower_boot_full <- quantile(boot_rmse_full, 0.05)
+ci_upper_boot_full <- quantile(boot_rmse_full, 0.95)
+
+cat("90% CI (Bootstrap - Percentile):\n")
+cat("  [", round(ci_lower_boot_full, 4), ", ", round(ci_upper_boot_full, 4), "]\n", sep = "")
+```
+
+The 90% confidence intervals for the full test set are:
+
+- Normal Theory: [9.48, 9.73]
+- Bootstrap: [9.48, 9.73]
+
+Both methods produce identical intervals. Notably, these CIs are much narrower than the partial test set intervals (which were approximately [8.95, 10.00]). This is expected — with 20,000 observations vs. 1,000, the standard error decreases by a factor of √20 ≈ 4.5, resulting in substantially more precise estimates.
+:::
+
+## h. Visualization
+
+Create a single graphic that communicates uncertainty in predictive performance. The graphic must show
+
+-   the RMSE point estimates
+-   the 90% confidence intervals
+
+for both test set sizes (partial test set from part c and full test set from part f) and for both confidence interval methods (normal theory and bootstrap).
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p1h-visualization
+#| fig-width: 8
+#| fig-height: 5
+
+# Compile results for visualization
+ci_comparison <- tibble(
+  test_set = c("Partial (n=1,000)", "Partial (n=1,000)", 
+               "Full (n=20,000)", "Full (n=20,000)"),
+  method = c("Normal Theory", "Bootstrap", "Normal Theory", "Bootstrap"),
+  rmse = c(rmse_partial, rmse_partial, rmse_full, rmse_full),
+  lower = c(ci_lower_normal, ci_lower_boot, ci_lower_normal_full, ci_lower_boot_full),
+  upper = c(ci_upper_normal, ci_upper_boot, ci_upper_normal_full, ci_upper_boot_full)
+)
+
+ggplot(ci_comparison, aes(x = test_set, y = rmse, color = method)) +
+  geom_point(position = position_dodge(width = 0.3), size = 3) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), 
+                position = position_dodge(width = 0.3), width = 0.2) +
+  labs(
+    title = "RMSE Estimates with 90% Confidence Intervals",
+    subtitle = "Comparing test set sizes and CI methods",
+    x = "Test Set",
+    y = "RMSE",
+    color = "CI Method"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+The visualization clearly illustrates two key findings:
+
+1. Sample size effect: The full test set (n=20,000) produces much narrower confidence intervals than the partial test set (n=1,000), demonstrating how larger samples provide more precise RMSE estimates.
+
+2. Method agreement: Normal theory and bootstrap methods yield nearly identical CIs for both test set sizes, suggesting the normality assumptions underlying the delta method are reasonable for this data.
+
+The RMSE point estimates are similar across both test sets (~9.5–9.6), indicating stable model performance. The partial test set's wider intervals highlight the increased uncertainty when evaluating on smaller samples.
+:::
+
+# Problem 2: Tuning using repeated cross-validation
+
+## a. Tuning with repeated cross-validation
+
+Combine the training and validation datasets. Using this combined dataset only, tune mixture and penalty via repeated Monte Carlo cross-validation to minimize RMSE. Clearly state:
+
+-   the number of hold-out(test) observations
+-   the number of repetition
+
+Report the selected mixture and penalty, along with the mean cross-validated RMSE.
+
+Provide a brief justification for the chosen cross-validation configuration (e.g., bias–variance considerations, computational cost, dataset size).
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p2a-repeated-cv
+
+set.seed(42)
+
+# Combined data already created in Problem 1b
+n_combined <- nrow(combined_data)
+
+# Cross-validation parameters
+n_holdout <- round(0.2 * n_combined)  # 20% holdout
+n_reps <- 25  # Number of repetitions
+
+cat("Cross-validation configuration:\n")
+cat("  Total observations:", n_combined, "\n")
+cat("  Hold-out observations:", n_holdout, "\n")
+cat("  Number of repetitions:", n_reps, "\n\n")
+
+# Store CV results
+cv_results_p2 <- tibble()
+
+for (rep in 1:n_reps) {
+  holdout_idx <- sample(1:n_combined, n_holdout)
+  train_idx <- setdiff(1:n_combined, holdout_idx)
+  
+  X_cv_train <- X_combined[train_idx, ]
+  y_cv_train <- y_combined[train_idx]
+  X_cv_test <- X_combined[holdout_idx, ]
+  y_cv_test <- y_combined[holdout_idx]
+  
+  for (mix in mixture_values) {
+    fit <- glmnet(X_cv_train, y_cv_train, alpha = mix)
+    preds <- predict(fit, newx = X_cv_test)
+    rmse_vals <- apply(preds, 2, function(pred) sqrt(mean((y_cv_test - pred)^2)))
+    
+    cv_results_p2 <- bind_rows(
+      cv_results_p2,
+      tibble(rep = rep, mixture = mix, penalty = fit$lambda, rmse = rmse_vals)
+    )
+  }
+}
+
+# Average RMSE across repetitions
+cv_summary_p2 <- aggregate(rmse ~ mixture + penalty, data = cv_results_p2, 
+                            FUN = function(x) c(mean = mean(x), sd = sd(x)))
+cv_summary_p2 <- do.call(data.frame, cv_summary_p2)
+names(cv_summary_p2) <- c("mixture", "penalty", "mean_rmse", "sd_rmse")
+
+# Find best parameters
+best_idx <- which.min(cv_summary_p2$mean_rmse)
+best_mixture_p2 <- cv_summary_p2$mixture[best_idx]
+best_penalty_p2 <- cv_summary_p2$penalty[best_idx]
+best_cv_rmse_p2 <- cv_summary_p2$mean_rmse[best_idx]
+
+cat("Selected tuning parameters:\n")
+cat("  Mixture:", best_mixture_p2, "\n")
+cat("  Penalty:", round(best_penalty_p2, 6), "\n")
+cat("  Mean CV RMSE:", round(best_cv_rmse_p2, 4), "\n")
+```
+
+Cross-validation configuration:
+
+Hold-out observations: 2,400 (20% of 12,000)
+Number of repetitions: 25
+
+Selected parameters: Mixture = 1 (pure lasso) and Penalty = 0.0326, with a mean CV RMSE of 9.25.
+
+Justification: A 20% holdout provides sufficient test observations (2,400) for stable RMSE estimates while retaining 80% for training. With 25 repetitions, the averaged RMSE reduces variance from any single random split. This configuration balances computational cost with reliable parameter selection. Interestingly, repeated CV selected pure lasso (mixture = 1) with a higher penalty than Problem 1's single validation approach (mixture = 0.9, penalty = 0.00284), suggesting the single validation set may have slightly overfit to that particular split.
+
+:::
+
+## b. Estimating RMSE and uncertainty from cross-validation
+
+Using the repeated cross-validation results from part (a), estimate the RMSE and construct a 90% confidence interval *without using the test data*. Clearly describe how the RMSE estimate and confidence interval are obtained from the cross-validation folds. Any approach to estimate the confidence interval is suitable.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p2b-cv-uncertainty
+
+# For each repetition, find the RMSE at the best mixture and closest penalty
+best_rmse_per_rep <- c()
+
+for (r in 1:n_reps) {
+  rep_data <- cv_results_p2[cv_results_p2$rep == r & 
+                             cv_results_p2$mixture == best_mixture_p2, ]
+  # Find closest penalty
+  closest_idx <- which.min(abs(rep_data$penalty - best_penalty_p2))
+  best_rmse_per_rep <- c(best_rmse_per_rep, rep_data$rmse[closest_idx])
+}
+
+# RMSE estimate (mean across reps)
+rmse_cv_estimate <- mean(best_rmse_per_rep)
+
+# Standard error across repetitions
+se_cv <- sd(best_rmse_per_rep) / sqrt(length(best_rmse_per_rep))
+
+# 90% CI using t-distribution
+t_90 <- qt(0.95, df = length(best_rmse_per_rep) - 1)
+ci_cv_lower <- rmse_cv_estimate - t_90 * se_cv
+ci_cv_upper <- rmse_cv_estimate + t_90 * se_cv
+
+cat("RMSE estimate from CV:", round(rmse_cv_estimate, 4), "\n")
+cat("Number of CV repetitions used:", length(best_rmse_per_rep), "\n")
+cat("90% CI (t-distribution):\n")
+cat("  [", round(ci_cv_lower, 4), ", ", round(ci_cv_upper, 4), "]\n", sep = "")
+```
+
+The CV-based RMSE estimate is 9.59 with a 90% confidence interval of [9.53, 9.65]. 
+
+This is constructed by:
+
+- Extracting the RMSE from each of the 25 repetitions at the selected (mixture, penalty) values
+- Computing the mean RMSE across repetitions as the point estimate
+- Using the standard error (SD / √n) with a t-distribution (df = 24) for the confidence interval
+
+The CI is relatively narrow because averaging over 25 repetitions reduces variability. Note that this RMSE (9.59) is higher than the mean CV RMSE reported during tuning (9.25), which is expected — the tuning RMSE is optimistically biased since the same CV folds were used to both select and evaluate the parameters.
+:::
+
+## c. Final model fit
+
+Fit the final model on the combined training and validation dataset using the selected mixture and penalty.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p2c-final-model
+
+final_model_p2 <- glmnet(X_combined, y_combined, 
+                          alpha = best_mixture_p2, 
+                          lambda = best_penalty_p2)
+
+cat("Final model (Problem 2) fitted:\n")
+cat("  Mixture:", best_mixture_p2, "\n")
+cat("  Penalty:", round(best_penalty_p2, 6), "\n")
+cat("  Non-zero coefficients:", sum(coef(final_model_p2) != 0) - 1, "\n")
+```
+
+The final model uses mixture = 1 (pure lasso) with penalty = 0.0326. With this stronger regularization, 5 coefficients are shrunk exactly to zero, leaving 40 non-zero predictors. This is more sparse than Problem 1's model (which retained all 45 predictors), demonstrating the lasso's variable selection property with a higher penalty value.
+:::
+
+## d. Test set evaluation
+
+Using the fitted model, predict outcomes for the entire test set and compute the test RMSE.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p2d-test-eval
+
+preds_p2 <- predict(final_model_p2, newx = X_test_full, s = best_penalty_p2)
+rmse_test_p2 <- sqrt(mean((y_test_full - preds_p2)^2))
+residuals_p2 <- y_test_full - preds_p2
+
+cat("Test RMSE:", round(rmse_test_p2, 4), "\n")
+```
+
+The test RMSE is 9.60, which matches the CV-based estimate of 9.59 almost exactly. This close agreement suggests the repeated cross-validation procedure provided an accurate estimate of out-of-sample performance. The test RMSE is also identical to Problem 1's result (9.60), indicating both tuning approaches yield similar predictive performance despite selecting different parameters.
+:::
+
+## e. Test set confidence interval
+
+Construct a 90% confidence interval for the RMSE using any appropriate method (e.g., normal theory or bootstrap). Provide details on what method was used.
+
+Report the CI.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p2e-test-ci
+
+set.seed(42)
+n_test <- length(residuals_p2)
+
+# Bootstrap CI (same approach as Problem 1)
+boot_rmse_p2 <- replicate(n_boot, {
+  boot_idx <- sample(1:n_test, n_test, replace = TRUE)
+  sqrt(mean(residuals_p2[boot_idx]^2))
+})
+
+ci_test_p2_lower <- quantile(boot_rmse_p2, 0.05)
+ci_test_p2_upper <- quantile(boot_rmse_p2, 0.95)
+
+cat("90% CI for Test RMSE (Bootstrap - Percentile Method):\n")
+cat("  [", round(ci_test_p2_lower, 4), ", ", round(ci_test_p2_upper, 4), "]\n", sep = "")
+cat("\nMethod: Percentile bootstrap with", n_boot, "resamples\n")
+```
+
+The 90% bootstrap percentile confidence interval for the test RMSE is [9.47, 9.72], based on 2,000 bootstrap resamples. This interval is quite narrow, indicating that the model’s predictive error on new data is estimated with relatively high precision. Because the bootstrap resamples the empirical distribution of test residuals, this CI reflects the sampling variability in the model’s out‑of‑sample performance without assuming normality of errors. The fact that the interval spans only about 0.25 units suggests that the test RMSE is stable and not overly sensitive to which specific test cases were observed.
+
+:::
+
+## f. Visualization
+
+Create a single graphic that compares uncertainty estimates before and after observing the test data. Show:
+
+-   the RMSE estimate and 90% confidence interval from cross-validation
+-   the RMSE estimate and 90% confidence interval from the test set
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p2f-visualization
+#| fig-width: 8
+#| fig-height: 5
+
+# First compute test set CI if not already done
+set.seed(42)
+n_test <- length(residuals_p2)
+
+boot_rmse_p2 <- replicate(n_boot, {
+  boot_idx <- sample(1:n_test, n_test, replace = TRUE)
+  sqrt(mean(residuals_p2[boot_idx]^2))
+})
+
+ci_test_p2_lower <- quantile(boot_rmse_p2, 0.05)
+ci_test_p2_upper <- quantile(boot_rmse_p2, 0.95)
+
+# Compile results
+p2_comparison <- tibble(
+  source = c("Cross-Validation", "Test Set"),
+  rmse = c(rmse_cv_estimate, rmse_test_p2),
+  lower = c(ci_cv_lower, ci_test_p2_lower),
+  upper = c(ci_cv_upper, ci_test_p2_upper)
+)
+
+ggplot(p2_comparison, aes(x = source, y = rmse)) +
+  geom_point(size = 4, color = "steelblue") +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.15, color = "steelblue", linewidth = 1) +
+  labs(
+    title = "RMSE Estimates: Cross-Validation vs Test Set",
+    subtitle = "90% Confidence Intervals",
+    x = "Evaluation Method",
+    y = "RMSE"
+  ) +
+  theme_minimal() +
+  coord_cartesian(ylim = c(9.4, 9.8))
+```
+
+The visualization shows the CV-based and test set RMSE estimates are nearly identical (both ~9.60), with the confidence intervals overlapping substantially. The CV interval [9.53, 9.65] is narrower than the test set interval [9.48, 9.73] — this is because the CV estimate averages over 25 repetitions with 2,400 holdout observations each, while the test set CI reflects sampling variability across the full 20,000 observations. Both methods indicate the true RMSE is likely between 9.5 and 9.75.
+:::
+
+## g. Reflection
+
+In a short paragraph, describe what you learned from this exercise. Discuss how the cross-validation based RMSE and confidence interval compared to the test set results, what surprised you (if anything), and which approach you would trust most for reporting predictive performance in practice. Briefly explain why.
+
+::: {.callout-note title="Solution"}
+The cross-validation RMSE estimate (9.59) and the test set RMSE (9.60) were remarkably close, demonstrating that repeated Monte Carlo CV can reliably estimate out-of-sample performance without touching the test data. The confidence intervals also overlapped, though the CV interval was slightly narrower. What surprised me was how well the CV estimate matched the test result — this validates the repeated CV approach as a trustworthy internal evaluation method.
+
+For reporting predictive performance in practice, I would trust the **test set RMSE** because it represents a true out-of-sample evaluation on data never used during model development or tuning. However, during model development when the test set should remain untouched, repeated CV provides a reliable proxy. The key insight is that CV estimates can be slightly optimistic if the same folds are used for both tuning and evaluation, so separating these steps (as in nested CV) or using a held-out test set for final reporting is important.
+
+:::
+
+# Problem 3: Nested Cross-Validation
+
+## a. Nested cross-validation implementation
+
+Combine the training and validation datasets. Implement nested cross-validation, where the outer cross-validation loop is used to estimate predictive performance and the inner cross-validation loop is used to tune mixture and penalty.
+
+Clearly state:
+
+-   the cross-validation approach taken for the outer loop
+-   the cross-validation approach taken for the inner loop
+-   a brief justification for the chosen cross-validation configuration
+
+Report the selected mixture and penalty and mean RMSE for each (outer) fold.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p3a-nested-cv
+
+set.seed(42)
+
+# Outer loop: 5-fold CV for performance estimation
+# Inner loop: 5-fold CV for tuning
+n_outer_folds <- 5
+n_inner_folds <- 5
+
+# Create outer folds
+outer_fold_ids <- sample(rep(1:n_outer_folds, length.out = n_combined))
+
+# Store results
+nested_cv_results <- tibble(
+  outer_fold = integer(),
+  best_mixture = numeric(),
+  best_penalty = numeric(),
+  rmse = numeric()
+)
+
+for (outer_fold in 1:n_outer_folds) {
+  cat("Processing outer fold", outer_fold, "of", n_outer_folds, "\n")
+  
+  # Split data for outer fold
+  outer_test_idx <- which(outer_fold_ids == outer_fold)
+  outer_train_idx <- which(outer_fold_ids != outer_fold)
+  
+  X_outer_train <- X_combined[outer_train_idx, ]
+  y_outer_train <- y_combined[outer_train_idx]
+  X_outer_test <- X_combined[outer_test_idx, ]
+  y_outer_test <- y_combined[outer_test_idx]
+  
+  # Inner CV for tuning
+  inner_fold_ids <- sample(rep(1:n_inner_folds, length.out = length(outer_train_idx)))
+  inner_cv_results <- tibble()
+  
+  for (inner_fold in 1:n_inner_folds) {
+    inner_test_idx <- which(inner_fold_ids == inner_fold)
+    inner_train_idx <- which(inner_fold_ids != inner_fold)
+    
+    X_inner_train <- X_outer_train[inner_train_idx, ]
+    y_inner_train <- y_outer_train[inner_train_idx]
+    X_inner_test <- X_outer_train[inner_test_idx, ]
+    y_inner_test <- y_outer_train[inner_test_idx]
+    
+    for (mix in mixture_values) {
+      fit <- glmnet(X_inner_train, y_inner_train, alpha = mix)
+      preds <- predict(fit, newx = X_inner_test)
+      rmse_vals <- apply(preds, 2, function(pred) sqrt(mean((y_inner_test - pred)^2)))
+      
+      inner_cv_results <- bind_rows(
+        inner_cv_results,
+        tibble(inner_fold = inner_fold, mixture = mix, penalty = fit$lambda, rmse = rmse_vals)
+      )
+    }
+  }
+  
+  # Select best parameters from inner CV
+  inner_summary <- aggregate(rmse ~ mixture + penalty, data = inner_cv_results, FUN = mean)
+  best_idx <- which.min(inner_summary$rmse)
+  best_mix_inner <- inner_summary$mixture[best_idx]
+  best_pen_inner <- inner_summary$penalty[best_idx]
+  
+  # Fit model on outer training data with best params
+  outer_fit <- glmnet(X_outer_train, y_outer_train, 
+                       alpha = best_mix_inner, 
+                       lambda = best_pen_inner)
+  
+  # Evaluate on outer test fold
+  outer_preds <- predict(outer_fit, newx = X_outer_test, s = best_pen_inner)
+  outer_rmse <- sqrt(mean((y_outer_test - outer_preds)^2))
+  
+  nested_cv_results <- bind_rows(
+    nested_cv_results,
+    tibble(outer_fold = outer_fold, best_mixture = best_mix_inner, 
+           best_penalty = best_pen_inner, rmse = outer_rmse)
+  )
+}
+
+cat("\nNested CV Results by Outer Fold:\n")
+knitr::kable(nested_cv_results, digits = 4,
+             col.names = c("Outer Fold", "Mixture", "Penalty", "RMSE"))
+```
+
+Cross-validation configuration:
+
+- Outer loop: 5-fold CV for unbiased performance estimation
+- Inner loop: 5-fold CV for hyperparameter tuning within each outer fold
+
+Justification: 5-fold CV is a standard choice balancing bias-variance tradeoff and computational cost. Nested CV ensures that tuning and evaluation are completely separated — each outer fold's test data is never seen during the inner tuning process, providing an unbiased estimate of the full model selection procedure.
+
+Results by fold: The selected parameters vary across outer folds (mixture ranges from 0.3 to 1, penalty from 0.003 to 0.136), demonstrating that optimal hyperparameters are sensitive to the particular data split. RMSE ranges from 9.40 to 9.91, with fold 4 showing notably higher error. This variability highlights why averaging across folds provides a more reliable performance estimate.
+
+
+:::
+
+## b. Estimating RMSE and uncertainty from nested cross-validation
+
+Using the outer-loop cross-validation results from part (a), estimate the RMSE and construct a 90% confidence interval without using the test data. Clearly describe how the RMSE estimate and confidence interval are obtained from the outer-fold results.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p3b-nested-uncertainty
+
+# RMSE estimate (mean across outer folds)
+rmse_nested <- mean(nested_cv_results$rmse)
+
+# Standard error across folds
+se_nested <- sd(nested_cv_results$rmse) / sqrt(n_outer_folds)
+
+# 90% CI using t-distribution
+t_90_nested <- qt(0.95, df = n_outer_folds - 1)
+ci_nested_lower <- rmse_nested - t_90_nested * se_nested
+ci_nested_upper <- rmse_nested + t_90_nested * se_nested
+
+cat("Nested CV RMSE estimate:", round(rmse_nested, 4), "\n")
+cat("Standard error:", round(se_nested, 4), "\n")
+cat("90% CI (t-distribution with df =", n_outer_folds - 1, "):\n")
+cat("  [", round(ci_nested_lower, 4), ", ", round(ci_nested_upper, 4), "]\n", sep = "")
+```
+
+The nested CV RMSE estimate is 9.61 with a 90% confidence interval of [9.43, 9.79]. The estimate is computed as the mean of the 5 outer-fold RMSEs, and the CI uses the standard error (SE = 0.084) with a t-distribution (df = 4) to account for the small number of folds.
+
+The CI is wider than Problem 2's CV interval [9.53, 9.65] because we only have 5 outer-fold estimates vs. 25 repetitions. However, the nested CV estimate is arguably more honest — it captures the full variability of the tuning + fitting procedure, including the instability in parameter selection across folds.
+
+:::
+
+## c. Final model fit
+
+Fit a final model on the combined training and validation dataset using tuning parameter values chosen based on the nested cross-validation results.
+
+Clearly describe the approach used to select the final tuning parameters.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p3c-final-model
+
+# Approach: Use mode of mixture and median of penalty across outer folds
+mixture_table <- table(nested_cv_results$best_mixture)
+best_mixture_p3 <- as.numeric(names(mixture_table)[which.max(mixture_table)])
+best_penalty_p3 <- median(nested_cv_results$best_penalty)
+
+cat("Parameter selection approach:\n")
+cat("  Mixture: Mode (most frequently selected)\n")
+cat("  Penalty: Median (robust to outliers)\n\n")
+cat("Mixtures selected across folds:", paste(nested_cv_results$best_mixture, collapse = ", "), "\n")
+cat("Penalties selected across folds:", paste(round(nested_cv_results$best_penalty, 4), collapse = ", "), "\n\n")
+
+cat("Final selected parameters:\n")
+cat("  Mixture:", best_mixture_p3, "\n")
+cat("  Penalty:", round(best_penalty_p3, 6), "\n\n")
+
+# Fit final model
+final_model_p3 <- glmnet(X_combined, y_combined, 
+                          alpha = best_mixture_p3, 
+                          lambda = best_penalty_p3)
+
+cat("Final model fitted:\n")
+cat("  Non-zero coefficients:", sum(coef(final_model_p3) != 0) - 1, "\n")
+```
+
+Parameter selection approach: The final mixture is selected as the mode (most frequently chosen: 1 appeared in 3 of 5 folds), and the penalty is the median (0.0402) to be robust to the wide range observed across folds (0.003 to 0.136).
+With mixture = 1 (pure lasso) and penalty = 0.0402, the final model has 40 non-zero coefficients — identical to Problem 2's model. The higher penalty compared to Problem 1 (0.00284) results in more aggressive variable selection, shrinking 5 predictors to exactly zero.
+
+:::
+
+## d. Test set evaluation
+
+Using the fitted model, predict outcomes for the entire test set and compute the test RMSE.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p3d-test-eval
+
+preds_p3 <- predict(final_model_p3, newx = X_test_full, s = best_penalty_p3)
+rmse_test_p3 <- sqrt(mean((y_test_full - preds_p3)^2))
+residuals_p3 <- y_test_full - preds_p3
+
+cat("Test RMSE:", round(rmse_test_p3, 4), "\n")
+```
+
+The test RMSE is 9.60, which matches the nested CV estimate of 9.61 almost exactly. This excellent agreement validates the nested CV procedure — by completely separating tuning from evaluation, nested CV provides an unbiased estimate of how the full model selection process will perform on new data. Notably, all three approaches (single validation set, repeated CV, and nested CV) yield the same test RMSE of 9.60.
+:::
+
+## e. Test set confidence interval
+
+Construct a 90% confidence interval for the RMSE using any appropriate method (e.g., normal theory or bootstrap). Provide details on what method was used.
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p3e-test-ci
+
+set.seed(42)
+
+# Bootstrap CI (percentile method, same as previous problems)
+boot_rmse_p3 <- replicate(n_boot, {
+  boot_idx <- sample(1:n_test, n_test, replace = TRUE)
+  sqrt(mean(residuals_p3[boot_idx]^2))
+})
+
+ci_test_p3_lower <- quantile(boot_rmse_p3, 0.05)
+ci_test_p3_upper <- quantile(boot_rmse_p3, 0.95)
+
+cat("90% CI for Test RMSE (Bootstrap - Percentile Method):\n")
+cat("  [", round(ci_test_p3_lower, 4), ", ", round(ci_test_p3_upper, 4), "]\n", sep = "")
+cat("\nMethod: Percentile bootstrap with", n_boot, "resamples\n")
+```
+
+The 90% bootstrap confidence interval for the test RMSE is [9.47, 9.72], using the percentile method with 2000 resamples. This is nearly identical to Problem 2's test CI [9.48, 9.73], as expected since both models achieve the same test RMSE of 9.60. The test set CI is narrower than the nested CV interval [9.43, 9.79], reflecting the larger effective sample size (20,000 test observations vs. 5 fold estimates).
+:::
+
+# Problem 4: Comparison
+
+## a. Comparison
+
+Compare the results across all modeling and evaluation approaches considered in this homework. Clearly report, for each approach:
+
+-   the selected tuning parameters
+-   the estimated RMSE
+-   the associated confidence interval
+
+::: {.callout-note title="Solution"}
+```{r}
+#| label: p4a-comparison-table
+
+# Compile all results
+comparison_table <- tibble(
+  Approach = c("P1: Single Validation Set", 
+               "P2: Repeated CV (25 reps)", 
+               "P3: Nested CV (5x5)"),
+  Mixture = c(best_mixture, best_mixture_p2, best_mixture_p3),
+  Penalty = c(best_penalty, best_penalty_p2, best_penalty_p3),
+  Test_RMSE = c(rmse_full, rmse_test_p2, rmse_test_p3),
+  CI_Lower = c(ci_lower_boot_full, ci_test_p2_lower, ci_test_p3_lower),
+  CI_Upper = c(ci_upper_boot_full, ci_test_p2_upper, ci_test_p3_upper)
+)
+
+knitr::kable(comparison_table, digits = 4,
+             col.names = c("Approach", "Mixture", "Penalty", "Test RMSE", 
+                          "90% CI Lower", "90% CI Upper"))
+```
+```{r}
+#| label: p4a-visualization
+#| fig-width: 9
+#| fig-height: 5
+
+ggplot(comparison_table, aes(x = Approach, y = Test_RMSE)) +
+  geom_point(size = 4, color = "darkblue") +
+  geom_errorbar(aes(ymin = CI_Lower, ymax = CI_Upper), 
+                width = 0.2, color = "darkblue", linewidth = 1) +
+  labs(
+    title = "Comparison of All Tuning Approaches",
+    subtitle = "Test RMSE with 90% Bootstrap Confidence Intervals",
+    x = "Tuning Approach",
+    y = "Test RMSE"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+```
+
+Summary of Results:
+
+All three approaches achieve identical test RMSE (9.60) with nearly identical confidence intervals, despite selecting different tuning parameters. The single validation approach chose mixture = 0.9 with a much smaller penalty, while CV-based methods selected pure lasso (mixture = 1) with stronger regularization. This demonstrates that the elastic net loss surface is relatively flat near the optimum — multiple parameter combinations yield similar predictive performance.
+
+```{r}
+#| label: p4a-cv-vs-test
+
+# Compare CV estimates vs Test results
+cv_vs_test <- tibble(
+  Approach = c("P1: Single Validation", "P2: Repeated CV", "P3: Nested CV"),
+  CV_Estimate = c(best_valid_rmse, rmse_cv_estimate, rmse_nested),
+  Test_RMSE = c(rmse_full, rmse_test_p2, rmse_test_p3),
+  Difference = c(rmse_full - best_valid_rmse, 
+                 rmse_test_p2 - rmse_cv_estimate, 
+                 rmse_test_p3 - rmse_nested)
+)
+
+knitr::kable(cv_vs_test, digits = 4,
+             col.names = c("Approach", "CV Estimate", "Test RMSE", "Difference"))
+```
+
+This table shows how well each CV approach estimated the final test performance. The single validation set underestimated the test RMSE (difference = 0.23), while repeated CV and nested CV provided much closer estimates (differences of 0.01 each).
+
+```{r}
+#| label: p4a-variable-selection
+
+# Extract coefficients (excluding intercept)
+coef_p1 <- coef(final_model_p1)[-1]
+coef_p2 <- coef(final_model_p2)[-1]
+coef_p3 <- coef(final_model_p3)[-1]
+
+# Count non-zero coefficients
+var_summary <- tibble(
+  Approach = c("P1: Single Validation", "P2: Repeated CV", "P3: Nested CV"),
+  Non_Zero = c(sum(coef_p1 != 0), sum(coef_p2 != 0), sum(coef_p3 != 0)),
+  Dropped = c(sum(coef_p1 == 0), sum(coef_p2 == 0), sum(coef_p3 == 0))
+)
+
+knitr::kable(var_summary, col.names = c("Approach", "Variables Retained", "Variables Dropped"))
+```
+```{r}
+#| label: p4a-dropped-vars
+
+# Which variables were dropped in P2 and P3?
+var_names <- paste0("X", 1:45)
+dropped_p2 <- var_names[coef_p2 == 0]
+dropped_p3 <- var_names[coef_p3 == 0]
+
+cat("Variables dropped by P2 (Repeated CV):", paste(dropped_p2, collapse = ", "), "\n")
+cat("Variables dropped by P3 (Nested CV):", paste(dropped_p3, collapse = ", "), "\n")
+```
+
+The stronger regularization in Problems 2 and 3 (pure lasso with higher penalty) performed variable selection, dropping 5 predictors. Problem 1's weaker penalty retained all 45 variables.
+
+
+:::
+
+## b. Reflection
+
+In a short paragraph, describe what you learned from this homework. Discuss how the choice of tuning and evaluation strategy affects estimated predictive performance and uncertainty, and state which approach you would recommend in practice. Justify your recommendation.
+
+::: {.callout-note title="Solution"}
+This homework revealed several important insights about model tuning and evaluation strategies. First, different tuning approaches can select substantially different hyperparameters (mixture ranging from 0.9 to 1.0, penalty ranging from 0.0028 to 0.0402) yet achieve identical test performance (RMSE = 9.60). This suggests the elastic net loss surface is relatively flat near the optimum for this dataset.
+
+Second, the choice of evaluation strategy significantly affects uncertainty quantification. The single validation set approach is computationally efficient but provides estimates dependent on a single random split. Repeated CV reduces this variability by averaging over 25 splits, producing narrower and more stable confidence intervals. Nested CV provides the most honest uncertainty estimate by completely separating tuning from evaluation, though with wider CIs due to fewer outer folds.
+
+**Recommendation:** In practice, I would recommend **nested cross-validation** for final performance reporting because it provides an unbiased estimate of how the entire model selection procedure will perform on new data. The CV-based RMSE estimates (9.59–9.61) matched the test RMSE (9.60) remarkably well, validating that proper cross-validation can reliably estimate out-of-sample performance without touching test data. For exploratory model development, repeated CV offers a good balance of reliability and computational efficiency. The single validation set approach should be reserved for very large datasets or rapid prototyping where the variance from a single split is less consequential.
+
+:::
